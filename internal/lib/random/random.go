@@ -12,10 +12,11 @@ func NewRandomString(size int) string {
 	chars := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
 		"abcdefghijklmnopqrstuvwxyz" +
 		"0123456789")
+	chl := len(chars)
 
 	b := make([]rune, size)
 	for i := range b {
-		b[i] = chars[rnd.Intn(len(chars))]
+		b[i] = chars[rnd.Intn(chl)]
 	}
 
 	return string(b)

@@ -73,7 +73,7 @@ func main() {
 	}
 
 	if err := srv.ListenAndServe(); err != nil {
-		log.Error("failed to start server")
+		log.Error("failed to start server: " + err.Error())
 	}
 
 	log.Error("server stopped")
@@ -103,13 +103,8 @@ func setupLogger(env string) *slog.Logger {
 }
 
 func setupPrettySlog() *slog.Logger {
-	opts := slogpretty.PrettyHandlerOptions{
-		SlogOpts: &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		},
-	}
-
-	handler := opts.NewPrettyHandler(os.Stdout)
-
+	handler := slogpretty.NewHandler(os.Stdout).
+		WithFieldsFormatJsonIndent().
+		WithLevel(slog.LevelDebug)
 	return slog.New(handler)
 }

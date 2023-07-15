@@ -3,96 +3,175 @@ package slogpretty
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
-	stdLog "log"
+	"log"
+	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/fatih/color"
 	"golang.org/x/exp/slog"
 )
 
-type PrettyHandlerOptions struct {
-	SlogOpts *slog.HandlerOptions
-}
-
-type PrettyHandler struct {
-	opts PrettyHandlerOptions
-	slog.Handler
-	l     *stdLog.Logger
-	attrs []slog.Attr
-}
-
-func (opts PrettyHandlerOptions) NewPrettyHandler(
-	out io.Writer,
-) *PrettyHandler {
-	h := &PrettyHandler{
-		Handler: slog.NewJSONHandler(out, opts.SlogOpts),
-		l:       stdLog.New(out, "", 0),
+type (
+	Handler struct {
+		SlogOpts
+		logger        *log.Logger
+		attrs         []slog.Attr
+		groups        []string
+		fieldsFormat  string // fieldsFormatJson, fieldsFormatJsonIndent, fieldsFormatYaml
+		useLevelEmoji bool
 	}
+	SlogOpts = slog.HandlerOptions
+)
 
+const (
+	fieldsFormatJson       = "json"
+	fieldsFormatJsonIndent = "json-indent"
+	fieldsFormatYaml       = "yaml"
+)
+
+func NewHandler(out io.Writer) Handler {
+	return Handler{
+		logger:       log.New(out, "", 0),
+		fieldsFormat: fieldsFormatJson,
+		SlogOpts:     SlogOpts{Level: slog.LevelDebug},
+	}
+}
+
+func (h Handler) WithLevel(l slog.Level) Handler {
+	h.SlogOpts.Level = l
 	return h
 }
 
-func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
-	level := r.Level.String() + ":"
+func (h Handler) WithSlogOpts(o SlogOpts) Handler {
+	h.SlogOpts = o
+	return h
+}
 
-	switch r.Level {
-	case slog.LevelDebug:
-		level = color.MagentaString(level)
-	case slog.LevelInfo:
-		level = color.BlueString(level)
-	case slog.LevelWarn:
-		level = color.YellowString(level)
-	case slog.LevelError:
-		level = color.RedString(level)
-	}
+func (h Handler) WithFieldsFormatYaml() Handler {
+	h.fieldsFormat = fieldsFormatYaml
+	return h
+}
 
-	fields := make(map[string]interface{}, r.NumAttrs())
+func (h Handler) WithFieldsFormatJsonIndent() Handler {
+	h.fieldsFormat = fieldsFormatJsonIndent
+	return h
+}
 
-	r.Attrs(func(a slog.Attr) bool {
-		fields[a.Key] = a.Value.Any()
+func (h Handler) WithUseLevelEmoji() Handler {
+	h.useLevelEmoji = true
+	return h
+}
 
-		return true
-	})
+func (h Handler) Handle(_ context.Context, r slog.Record) error {
+	_println := []interface{}{h.lev(r), color.CyanString(r.Message)}
 
-	for _, a := range h.attrs {
-		fields[a.Key] = a.Value.Any()
-	}
-
-	var b []byte
-	var err error
-
-	if len(fields) > 0 {
-		b, err = json.MarshalIndent(fields, "", "  ")
+	if xs := attrsValues(append(recordAttrs(r), h.attrs...)...); len(xs) != 0 {
+		for i := len(h.groups) - 1; i >= 0; i-- {
+			xs = map[string]interface{}{
+				h.groups[i]: xs,
+			}
+		}
+		s, err := formatFields(xs)
 		if err != nil {
 			return err
 		}
+		_println = append(_println, s)
 	}
 
-	timeStr := r.Time.Format("[15:05:05.000]")
-	msg := color.CyanString(r.Message)
+	if h.SlogOpts.AddSource {
+		_println = append(_println, color.GreenString(recordFormatSource(r)))
+	}
 
-	h.l.Println(
-		timeStr,
-		level,
-		msg,
-		color.WhiteString(string(b)),
-	)
+	h.logger.Println(_println...)
 
 	return nil
 }
 
-func (h *PrettyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &PrettyHandler{
-		Handler: h.Handler,
-		l:       h.l,
-		attrs:   attrs,
-	}
+func (h Handler) Enabled(_ context.Context, l slog.Level) bool {
+	return l.Level() >= h.SlogOpts.Level.Level()
 }
 
-func (h *PrettyHandler) WithGroup(name string) slog.Handler {
-	// TODO: implement
-	return &PrettyHandler{
-		Handler: h.Handler.WithGroup(name),
-		l:       h.l,
+func (h Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	h.attrs = append(h.attrs, attrs...)
+	return h
+}
+
+func (h Handler) WithGroup(name string) slog.Handler {
+	h.groups = append(h.groups, name)
+	return h
+}
+
+// formats a Source for the log event.
+func recordFormatSource(r slog.Record) string {
+	fs := runtime.CallersFrames([]uintptr{r.PC})
+	f, _ := fs.Next()
+
+	function := filepath.Base(f.Function)
+	for i, ch := range function {
+		if string(ch) == "." {
+			function = function[i:]
+			break
+		}
 	}
+	return fmt.Sprintf("%s:%d%s", filepath.Base(f.File), f.Line, function)
+}
+
+func (h Handler) lev(r slog.Record) string {
+	level, emoji := r.Level.String(), ""
+	switch r.Level {
+	case slog.LevelDebug:
+		emoji = "👀"
+		level = color.MagentaString(
+			"DEBUG")
+	case slog.LevelInfo:
+		emoji = "✅"
+		level = color.BlueString(
+			"INFO ")
+	case slog.LevelWarn:
+		emoji = "🔥"
+		level = color.YellowString(
+			"WARN ")
+	case slog.LevelError:
+		emoji = "❌"
+		level = color.RedString(
+			"ERROR")
+	}
+	if h.useLevelEmoji && emoji != "" {
+		return emoji + " " + level
+	}
+	return level
+}
+
+func formatFields(fields map[string]interface{}) (string, error) {
+	var b []byte
+	var err error
+	b, err = json.Marshal(fields)
+	if err != nil {
+		return "", err
+	}
+	return color.WhiteString(strings.TrimSpace(string(b))), nil
+}
+
+func recordAttrs(r slog.Record) []slog.Attr {
+	xs := make([]slog.Attr, 0, r.NumAttrs())
+	r.Attrs(func(a slog.Attr) bool {
+		xs = append(xs, a)
+		return true
+	})
+	return xs
+}
+
+func attrsValues(attrs ...slog.Attr) map[string]interface{} {
+	fields := make(map[string]interface{}, len(attrs))
+	for _, a := range attrs {
+		if a.Value.Kind() == slog.KindGroup {
+			fields[a.Key] = attrsValues(a.Value.Group()...)
+		} else {
+			fields[a.Key] = a.Value.Any()
+		}
+	}
+	return fields
 }

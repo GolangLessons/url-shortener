@@ -105,6 +105,7 @@ func setupLogger(env string) *slog.Logger {
 func setupPrettySlog() *slog.Logger {
 	handler := slogpretty.NewHandler(os.Stdout).
 		WithFieldsFormatJsonIndent().
-		WithLevel(slog.LevelDebug)
+		WithLevel(slog.LevelDebug).
+		WithUseLevelEmoji()
 	return slog.New(handler)
 }

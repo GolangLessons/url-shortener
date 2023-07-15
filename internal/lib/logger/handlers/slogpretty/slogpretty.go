@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"io"
 	"log"
 	"path/filepath"
@@ -23,7 +24,8 @@ type (
 		fieldsFormat  string // fieldsFormatJson, fieldsFormatJsonIndent, fieldsFormatYaml
 		useLevelEmoji bool
 	}
-	SlogOpts = slog.HandlerOptions
+	SlogOpts    = slog.HandlerOptions
+	marshalFunc func(any) ([]byte, error)
 )
 
 const (
@@ -31,6 +33,14 @@ const (
 	fieldsFormatJsonIndent = "json-indent"
 	fieldsFormatYaml       = "yaml"
 )
+
+var marshalers = map[string]marshalFunc{
+	fieldsFormatJson: json.Marshal,
+	fieldsFormatJsonIndent: func(v any) ([]byte, error) {
+		return json.MarshalIndent(v, "", "  ")
+	},
+	fieldsFormatYaml: yaml.Marshal,
+}
 
 func NewHandler(out io.Writer) Handler {
 	return Handler{
@@ -74,7 +84,11 @@ func (h Handler) Handle(_ context.Context, r slog.Record) error {
 				h.groups[i]: xs,
 			}
 		}
-		s, err := formatFields(xs)
+		marshaler, ok := marshalers[h.fieldsFormat]
+		if !ok {
+			marshaler = json.Marshal
+		}
+		s, err := marshaler.formatFields(xs)
 		if err != nil {
 			return err
 		}
@@ -145,10 +159,12 @@ func (h Handler) lev(r slog.Record) string {
 	return level
 }
 
-func formatFields(fields map[string]interface{}) (string, error) {
-	var b []byte
-	var err error
-	b, err = json.Marshal(fields)
+func (f marshalFunc) formatFields(fields map[string]interface{}) (string, error) {
+	var (
+		b   []byte
+		err error
+	)
+	b, err = f(fields)
 	if err != nil {
 		return "", err
 	}

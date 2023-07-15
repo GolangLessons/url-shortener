@@ -7,6 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -19,10 +20,11 @@ type (
 	Handler struct {
 		SlogOpts
 		logger        *log.Logger
+		timeLayout    string // by default, do not display the time locally
 		attrs         []Attr
 		groups        []string
 		fieldsFormat  string // fieldsFormatJson, fieldsFormatJsonIndent, fieldsFormatYaml
-		useLevelEmoji bool
+		useLevelEmoji bool   // the flag instructs to use emoji in the logging level text
 	}
 	Record      = slog.Record
 	Attr        = slog.Attr
@@ -63,12 +65,22 @@ var (
 	}
 )
 
-func NewHandler(out io.Writer) Handler {
+func NewHandler() Handler {
 	return Handler{
-		logger:       log.New(out, "", 0),
+		logger:       log.New(os.Stderr, "", 0),
 		fieldsFormat: fieldsFormatJson,
 		SlogOpts:     SlogOpts{Level: slog.LevelDebug},
 	}
+}
+
+func (h Handler) WithOutput(output io.Writer) Handler {
+	h.logger = log.New(output, "", 0)
+	return h
+}
+
+func (h Handler) WithTimeLayout(layout string) Handler {
+	h.timeLayout = layout
+	return h
 }
 
 func (h Handler) WithLevel(l Level) Handler {
@@ -107,42 +119,26 @@ func (h Handler) WithLevelEmoji() Handler {
 }
 
 func (h Handler) Handle(_ context.Context, r Record) error {
-	l := levelsInfo[r.Level.Level()]
-	level := l.text
-	if level == "" {
-		level = r.Level.String()
-	}
-	if l.colorFunc != nil {
-		level = l.colorFunc(level)
-	}
-	if h.useLevelEmoji && l.emoji != "" {
-		level = l.emoji + " " + level
+	var outputParts []interface{}
+	if h.timeLayout != "" {
+		outputParts = append(outputParts, color.WhiteString(r.Time.Format(h.timeLayout)))
 	}
 
-	_println := []interface{}{level, color.CyanString(r.Message)}
+	outputParts = append(outputParts, h.recordLevel(r), color.CyanString(r.Message))
 
-	if xs := attrsValues(append(recordAttrs(r), h.attrs...)...); len(xs) != 0 {
-		for i := len(h.groups) - 1; i >= 0; i-- {
-			xs = map[string]interface{}{
-				h.groups[i]: xs,
-			}
-		}
-		marshaler, ok := marshalers[h.fieldsFormat]
-		if !ok {
-			marshaler = json.Marshal
-		}
-		s, err := marshaler.formatFields(xs)
-		if err != nil {
-			return err
-		}
-		_println = append(_println, s)
+	strAttrs, err := h.recordAttrs(r)
+	if err != nil {
+		return err
+	}
+	if strAttrs != "" {
+		outputParts = append(outputParts, strAttrs)
 	}
 
 	if h.SlogOpts.AddSource {
-		_println = append(_println, color.GreenString(recordFormatSource(r)))
+		outputParts = append(outputParts, color.GreenString(recordFormatSource(r)))
 	}
 
-	h.logger.Println(_println...)
+	h.logger.Println(outputParts...)
 
 	return nil
 }
@@ -159,6 +155,42 @@ func (h Handler) WithAttrs(attrs []Attr) SlogHandler {
 func (h Handler) WithGroup(name string) SlogHandler {
 	h.groups = append(h.groups, name)
 	return h
+}
+
+func (h Handler) recordAttrs(r Record) (string, error) {
+	xs := attrsValues(append(recordAttrs(r), h.attrs...)...)
+	if len(xs) == 0 {
+		return "", nil
+	}
+	for i := len(h.groups) - 1; i >= 0; i-- {
+		xs = map[string]interface{}{
+			h.groups[i]: xs,
+		}
+	}
+	marshaler, ok := marshalers[h.fieldsFormat]
+	if !ok {
+		marshaler = json.Marshal
+	}
+	s, err := marshaler.formatFields(xs)
+	if err != nil {
+		return "", err
+	}
+	return s, nil
+}
+
+func (h Handler) recordLevel(r Record) string {
+	l := levelsInfo[r.Level.Level()]
+	level := l.text
+	if level == "" {
+		level = r.Level.String()
+	}
+	if l.colorFunc != nil {
+		level = l.colorFunc(level)
+	}
+	if h.useLevelEmoji && l.emoji != "" {
+		level = l.emoji + " " + level
+	}
+	return level
 }
 
 // formats a Source for the log event.

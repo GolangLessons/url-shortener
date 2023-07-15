@@ -109,9 +109,10 @@ func newLogger(env string) *slog.Logger {
 }
 
 func newPrettySlog() *slog.Logger {
-	handler := slogpretty.NewHandler(os.Stdout).
+	handler := slogpretty.NewHandler().
 		WithLevel(slog.LevelDebug).
 		WithLevelEmoji().
-		WithAddSource()
+		WithAddSource().
+		WithTimeLayout("15:04:05")
 	return slog.New(handler)
 }

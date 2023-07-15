@@ -26,6 +26,12 @@ type (
 	}
 	SlogOpts    = slog.HandlerOptions
 	marshalFunc func(any) ([]byte, error)
+	Level       = slog.Level
+	levelInfo   struct {
+		text      string
+		emoji     string
+		colorFunc func(format string, a ...interface{}) string
+	}
 )
 
 const (
@@ -34,13 +40,25 @@ const (
 	fieldsFormatYaml       = "yaml"
 )
 
-var marshalers = map[string]marshalFunc{
-	fieldsFormatJson: json.Marshal,
-	fieldsFormatJsonIndent: func(v any) ([]byte, error) {
-		return json.MarshalIndent(v, "", "  ")
-	},
-	fieldsFormatYaml: yaml.Marshal,
-}
+var (
+	marshalers = map[string]marshalFunc{
+		fieldsFormatJson: json.Marshal,
+		fieldsFormatJsonIndent: func(v any) ([]byte, error) {
+			return json.MarshalIndent(v, "", "  ")
+		},
+		fieldsFormatYaml: yaml.Marshal,
+	}
+	levelsInfo = map[Level]levelInfo{
+		slog.LevelDebug: {
+			"DEBUG", "👀", color.MagentaString},
+		slog.LevelInfo: {
+			"INFO ", "✅", color.BlueString},
+		slog.LevelWarn: {
+			"WARN ", "🔥", color.YellowString},
+		slog.LevelError: {
+			"ERROR", "❌", color.RedString},
+	}
+)
 
 func NewHandler(out io.Writer) Handler {
 	return Handler{
@@ -76,7 +94,19 @@ func (h Handler) WithUseLevelEmoji() Handler {
 }
 
 func (h Handler) Handle(_ context.Context, r slog.Record) error {
-	_println := []interface{}{h.lev(r), color.CyanString(r.Message)}
+	l := levelsInfo[r.Level.Level()]
+	level := l.text
+	if level == "" {
+		level = r.Level.String()
+	}
+	if l.colorFunc != nil {
+		level = l.colorFunc(level)
+	}
+	if h.useLevelEmoji && l.emoji != "" {
+		level = l.emoji + " " + level
+	}
+
+	_println := []interface{}{level, color.CyanString(r.Message)}
 
 	if xs := attrsValues(append(recordAttrs(r), h.attrs...)...); len(xs) != 0 {
 		for i := len(h.groups) - 1; i >= 0; i-- {
@@ -131,32 +161,6 @@ func recordFormatSource(r slog.Record) string {
 		}
 	}
 	return fmt.Sprintf("%s:%d%s", filepath.Base(f.File), f.Line, function)
-}
-
-func (h Handler) lev(r slog.Record) string {
-	level, emoji := r.Level.String(), ""
-	switch r.Level {
-	case slog.LevelDebug:
-		emoji = "👀"
-		level = color.MagentaString(
-			"DEBUG")
-	case slog.LevelInfo:
-		emoji = "✅"
-		level = color.BlueString(
-			"INFO ")
-	case slog.LevelWarn:
-		emoji = "🔥"
-		level = color.YellowString(
-			"WARN ")
-	case slog.LevelError:
-		emoji = "❌"
-		level = color.RedString(
-			"ERROR")
-	}
-	if h.useLevelEmoji && emoji != "" {
-		return emoji + " " + level
-	}
-	return level
 }
 
 func (f marshalFunc) formatFields(fields map[string]interface{}) (string, error) {

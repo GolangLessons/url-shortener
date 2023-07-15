@@ -26,7 +26,7 @@ const (
 func main() {
 	cfg := config.MustLoad()
 
-	log := setupLogger(cfg.Env)
+	log := newLogger(cfg.Env)
 
 	log.Info(
 		"starting url-shortener",
@@ -46,9 +46,15 @@ func main() {
 	router := chi.NewRouter()
 
 	router.Use(middleware.RequestID)
+
+	// TODO: Log requests with mismatched route using slog instead of chi logger
 	router.Use(middleware.Logger)
+
 	router.Use(mwLogger.New(log))
+
+	// TODO: use slog to log panic and github.com/maruel/panicparse to handle it
 	router.Use(middleware.Recoverer)
+
 	router.Use(middleware.URLFormat)
 
 	router.Route("/url", func(r chi.Router) {
@@ -79,12 +85,12 @@ func main() {
 	log.Error("server stopped")
 }
 
-func setupLogger(env string) *slog.Logger {
+func newLogger(env string) *slog.Logger {
 	var log *slog.Logger
 
 	switch env {
 	case envLocal:
-		log = setupPrettySlog()
+		log = newPrettySlog()
 	case envDev:
 		log = slog.New(
 			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
@@ -102,7 +108,7 @@ func setupLogger(env string) *slog.Logger {
 	return log
 }
 
-func setupPrettySlog() *slog.Logger {
+func newPrettySlog() *slog.Logger {
 	handler := slogpretty.NewHandler(os.Stdout).
 		WithFieldsFormatJsonIndent().
 		WithLevel(slog.LevelDebug).

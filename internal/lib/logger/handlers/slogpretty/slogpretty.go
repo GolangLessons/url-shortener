@@ -164,11 +164,7 @@ func recordFormatSource(r slog.Record) string {
 }
 
 func (f marshalFunc) formatFields(fields map[string]interface{}) (string, error) {
-	var (
-		b   []byte
-		err error
-	)
-	b, err = f(fields)
+	b, err := f(fields)
 	if err != nil {
 		return "", err
 	}

@@ -19,12 +19,15 @@ type (
 	Handler struct {
 		SlogOpts
 		logger        *log.Logger
-		attrs         []slog.Attr
+		attrs         []Attr
 		groups        []string
 		fieldsFormat  string // fieldsFormatJson, fieldsFormatJsonIndent, fieldsFormatYaml
 		useLevelEmoji bool
 	}
+	Record      = slog.Record
+	Attr        = slog.Attr
 	SlogOpts    = slog.HandlerOptions
+	SlogHandler = slog.Handler
 	marshalFunc func(any) ([]byte, error)
 	Level       = slog.Level
 	levelInfo   struct {
@@ -68,13 +71,23 @@ func NewHandler(out io.Writer) Handler {
 	}
 }
 
-func (h Handler) WithLevel(l slog.Level) Handler {
+func (h Handler) WithLevel(l Level) Handler {
 	h.SlogOpts.Level = l
 	return h
 }
 
 func (h Handler) WithSlogOpts(o SlogOpts) Handler {
 	h.SlogOpts = o
+	return h
+}
+
+func (h Handler) WithAddSource() Handler {
+	h.SlogOpts.AddSource = true
+	return h
+}
+
+func (h Handler) WithReplaceAttr(replaceAttr func(groups []string, a Attr) Attr) Handler {
+	h.SlogOpts.ReplaceAttr = replaceAttr
 	return h
 }
 
@@ -88,12 +101,12 @@ func (h Handler) WithFieldsFormatJsonIndent() Handler {
 	return h
 }
 
-func (h Handler) WithUseLevelEmoji() Handler {
+func (h Handler) WithLevelEmoji() Handler {
 	h.useLevelEmoji = true
 	return h
 }
 
-func (h Handler) Handle(_ context.Context, r slog.Record) error {
+func (h Handler) Handle(_ context.Context, r Record) error {
 	l := levelsInfo[r.Level.Level()]
 	level := l.text
 	if level == "" {
@@ -134,22 +147,22 @@ func (h Handler) Handle(_ context.Context, r slog.Record) error {
 	return nil
 }
 
-func (h Handler) Enabled(_ context.Context, l slog.Level) bool {
+func (h Handler) Enabled(_ context.Context, l Level) bool {
 	return l.Level() >= h.SlogOpts.Level.Level()
 }
 
-func (h Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (h Handler) WithAttrs(attrs []Attr) SlogHandler {
 	h.attrs = append(h.attrs, attrs...)
 	return h
 }
 
-func (h Handler) WithGroup(name string) slog.Handler {
+func (h Handler) WithGroup(name string) SlogHandler {
 	h.groups = append(h.groups, name)
 	return h
 }
 
 // formats a Source for the log event.
-func recordFormatSource(r slog.Record) string {
+func recordFormatSource(r Record) string {
 	fs := runtime.CallersFrames([]uintptr{r.PC})
 	f, _ := fs.Next()
 
@@ -171,16 +184,16 @@ func (f marshalFunc) formatFields(fields map[string]interface{}) (string, error)
 	return color.WhiteString(strings.TrimSpace(string(b))), nil
 }
 
-func recordAttrs(r slog.Record) []slog.Attr {
-	xs := make([]slog.Attr, 0, r.NumAttrs())
-	r.Attrs(func(a slog.Attr) bool {
+func recordAttrs(r Record) []Attr {
+	xs := make([]Attr, 0, r.NumAttrs())
+	r.Attrs(func(a Attr) bool {
 		xs = append(xs, a)
 		return true
 	})
 	return xs
 }
 
-func attrsValues(attrs ...slog.Attr) map[string]interface{} {
+func attrsValues(attrs ...Attr) map[string]interface{} {
 	fields := make(map[string]interface{}, len(attrs))
 	for _, a := range attrs {
 		if a.Value.Kind() == slog.KindGroup {

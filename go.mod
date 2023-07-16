@@ -13,6 +13,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -53,7 +54,6 @@ require (
 	golang.org/x/text v0.8.0 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	moul.io/http2curl/v2 v2.3.0 // indirect
 	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3 // indirect
 )

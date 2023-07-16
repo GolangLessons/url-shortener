@@ -5,3 +5,8 @@ http_server:
   timeout: 4s
   idle_timeout: 30s
   user: "Shabby8574"
+log:
+  slog:
+    level: "info"
+    add_source: true
+    format: "json"

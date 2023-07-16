@@ -23,16 +23,17 @@ type (
 		timeLayout    string // by default, do not display the time locally
 		attrs         []Attr
 		groups        []string
-		fieldsFormat  string // fieldsFormatJson, fieldsFormatJsonIndent, fieldsFormatYaml
-		useLevelEmoji bool   // the flag instructs to use emoji in the logging level text
+		fieldsFormat  FieldsFormat // Json, JsonIndent, Yaml
+		useLevelEmoji bool         // the flag instructs to use emoji in the logging level text
 	}
-	Record      = slog.Record
-	Attr        = slog.Attr
-	SlogOpts    = slog.HandlerOptions
-	SlogHandler = slog.Handler
-	marshalFunc func(any) ([]byte, error)
-	Level       = slog.Level
-	levelInfo   struct {
+	FieldsFormat string
+	Record       = slog.Record
+	Attr         = slog.Attr
+	SlogOpts     = slog.HandlerOptions
+	SlogHandler  = slog.Handler
+	marshalFunc  func(any) ([]byte, error)
+	Level        = slog.Level
+	levelInfo    struct {
 		text      string
 		emoji     string
 		colorFunc func(format string, a ...interface{}) string
@@ -40,18 +41,18 @@ type (
 )
 
 const (
-	fieldsFormatJson       = "json"
-	fieldsFormatJsonIndent = "json-indent"
-	fieldsFormatYaml       = "yaml"
+	ffJson       FieldsFormat = "json"
+	ffJsonIndent FieldsFormat = "json-indent"
+	ffYaml       FieldsFormat = "yaml"
 )
 
 var (
-	marshalers = map[string]marshalFunc{
-		fieldsFormatJson: json.Marshal,
-		fieldsFormatJsonIndent: func(v any) ([]byte, error) {
+	fieldFormats = map[FieldsFormat]marshalFunc{
+		ffJson: json.Marshal,
+		ffJsonIndent: func(v any) ([]byte, error) {
 			return json.MarshalIndent(v, "", "  ")
 		},
-		fieldsFormatYaml: yaml.Marshal,
+		ffYaml: yaml.Marshal,
 	}
 	levelsInfo = map[Level]levelInfo{
 		slog.LevelDebug: {
@@ -68,9 +69,27 @@ var (
 func NewHandler() Handler {
 	return Handler{
 		logger:       log.New(os.Stderr, "", 0),
-		fieldsFormat: fieldsFormatJson,
+		fieldsFormat: ffJson,
 		SlogOpts:     SlogOpts{Level: slog.LevelDebug},
 	}
+}
+
+func (f FieldsFormat) Validate() error {
+	if _, ok := fieldFormats[f]; !ok {
+		xs := make([]string, 0, len(fieldFormats))
+		for ff := range fieldFormats {
+			xs = append(xs, string(ff))
+		}
+		return fmt.Errorf("invalid fields format %q, must be one of %s", f, strings.Join(xs, ","))
+	}
+	return nil
+}
+
+func (f FieldsFormat) Marshal(v any) ([]byte, error) {
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	return fieldFormats[f](v)
 }
 
 func (h Handler) WithOutput(output io.Writer) Handler {
@@ -93,8 +112,8 @@ func (h Handler) WithSlogOpts(o SlogOpts) Handler {
 	return h
 }
 
-func (h Handler) WithAddSource() Handler {
-	h.SlogOpts.AddSource = true
+func (h Handler) WithAddSource(v bool) Handler {
+	h.SlogOpts.AddSource = v
 	return h
 }
 
@@ -103,18 +122,13 @@ func (h Handler) WithReplaceAttr(replaceAttr func(groups []string, a Attr) Attr)
 	return h
 }
 
-func (h Handler) WithFieldsFormatYaml() Handler {
-	h.fieldsFormat = fieldsFormatYaml
+func (h Handler) WithFieldsFormat(f FieldsFormat) Handler {
+	h.fieldsFormat = f
 	return h
 }
 
-func (h Handler) WithFieldsFormatJsonIndent() Handler {
-	h.fieldsFormat = fieldsFormatJsonIndent
-	return h
-}
-
-func (h Handler) WithLevelEmoji() Handler {
-	h.useLevelEmoji = true
+func (h Handler) WithLevelEmoji(v bool) Handler {
+	h.useLevelEmoji = v
 	return h
 }
 
@@ -167,15 +181,11 @@ func (h Handler) recordAttrs(r Record) (string, error) {
 			h.groups[i]: xs,
 		}
 	}
-	marshaler, ok := marshalers[h.fieldsFormat]
-	if !ok {
-		marshaler = json.Marshal
-	}
-	s, err := marshaler.formatFields(xs)
+	s, err := h.fieldsFormat.Marshal(xs)
 	if err != nil {
 		return "", err
 	}
-	return s, nil
+	return color.WhiteString(string(s)), nil
 }
 
 func (h Handler) recordLevel(r Record) string {

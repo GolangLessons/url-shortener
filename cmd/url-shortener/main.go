@@ -17,16 +17,10 @@ import (
 	"url-shortener/internal/storage/sqlite"
 )
 
-const (
-	envLocal = "local"
-	envDev   = "dev"
-	envProd  = "prod"
-)
-
 func main() {
 	cfg := config.MustLoad()
 
-	log := newLogger(cfg.Env)
+	log := newSlogLogger(cfg.Log.Slog)
 
 	log.Info(
 		"starting url-shortener",
@@ -85,25 +79,22 @@ func main() {
 	log.Error("server stopped")
 }
 
-func newLogger(env string) *slog.Logger {
-	switch env {
-	case envLocal:
-		return slog.New(slogpretty.NewHandler().
-			WithLevel(slog.LevelDebug).
-			WithLevelEmoji().
-			WithAddSource().
-			WithTimeLayout("15:04:05"))
-	case envDev:
-		return slog.New(
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
-		)
-	case envProd:
-		return slog.New(
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
-		)
+func newSlogLogger(c config.Slog) *slog.Logger {
+	o := &slog.HandlerOptions{Level: c.Level, AddSource: c.AddSource}
+	w := os.Stdout
+	var h slog.Handler
+
+	switch c.Format {
+	case "pretty":
+		h = slogpretty.NewHandler().
+			WithAddSource(c.AddSource).
+			WithLevel(c.Level).
+			WithLevelEmoji(c.Pretty.Emoji).
+			WithFieldsFormat(c.Pretty.FieldsFormat)
+	case "json":
+		h = slog.NewJSONHandler(w, o)
+	case "text":
+		h = slog.NewTextHandler(w, o)
 	}
-	// If env config is invalid, set prod settings by default due to security
-	return slog.New(
-		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
-	)
+	return slog.New(h)
 }

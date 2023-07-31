@@ -2,6 +2,7 @@ package save
 
 import (
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -45,6 +46,15 @@ func New(log *slog.Logger, urlSaver URLSaver) http.HandlerFunc {
 		var req Request
 
 		err := render.DecodeJSON(r.Body, &req)
+		if errors.Is(err, io.EOF) {
+			// Такую ошибку встретим, если получили запрос с пустым телом.
+			// Обработаем её отдельно
+			log.Error("request body is empty")
+
+			render.JSON(w, r, resp.Error("empty request"))
+
+			return
+		}
 		if err != nil {
 			log.Error("failed to decode request body", sl.Err(err))
 

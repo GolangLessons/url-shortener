@@ -2,18 +2,18 @@ package main
 
 import (
 	"context"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/exp/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"golang.org/x/exp/slog"
-
 	"url-shortener/internal/config"
 	"url-shortener/internal/http-server/handlers/redirect"
+	hDelete "url-shortener/internal/http-server/handlers/url/delete"
 	"url-shortener/internal/http-server/handlers/url/save"
 	mwLogger "url-shortener/internal/http-server/middleware/logger"
 	"url-shortener/internal/lib/logger/handlers/slogpretty"
@@ -59,7 +59,7 @@ func main() {
 		}))
 
 		r.Post("/", save.New(log, storage))
-		// TODO: add DELETE /url/{id}
+		r.Delete("/{id}", hDelete.New(log, storage))
 	})
 
 	router.Get("/{alias}", redirect.New(log, storage))

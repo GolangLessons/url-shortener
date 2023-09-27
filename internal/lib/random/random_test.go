@@ -9,7 +9,7 @@ import (
 func TestNewRandomString(t *testing.T) {
 	tests := []struct {
 		name string
-		size int
+		size uint
 	}{
 		{
 			name: "size = 1",

@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -34,11 +35,13 @@ func TestURLShortener_HappyPath(t *testing.T) {
 		Expect().
 		Status(200).
 		JSON().Object().
+		ContainsKey("status").
+		ContainsKey("id").
 		ContainsKey("alias")
 }
 
 //nolint:funlen
-func TestURLShortener_SaveRedirect(t *testing.T) {
+func TestURLShortener_SaveRedirectDelete(t *testing.T) {
 	testCases := []struct {
 		name  string
 		url   string
@@ -102,9 +105,20 @@ func TestURLShortener_SaveRedirect(t *testing.T) {
 				alias = resp.Value("alias").String().Raw()
 			}
 
+			id := int64(resp.Value("id").Number().Raw())
+
 			// Redirect
 
 			testRedirect(t, alias, tc.url)
+
+			// Delete
+
+			resp = e.DELETE(fmt.Sprintf("/url/%d", id)).
+				WithBasicAuth("myuser", "mypass").
+				Expect().Status(http.StatusOK).
+				JSON().Object()
+
+			require.Equal(t, resp.Value("status").Raw(), "OK")
 		})
 	}
 }

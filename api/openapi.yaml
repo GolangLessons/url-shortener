@@ -1,0 +1,111 @@
+openapi: 3.0.1
+info:
+  title: url-shortener
+  version: '123'
+paths:
+  /{alias}:
+    get:
+      operationId: Redirect
+      parameters:
+        - name: alias
+          in: path
+          description: Short alias of URL
+          required: true
+          schema:
+            type: string
+          example: abcd
+      responses:
+        '302':
+          description: redirect
+        '200':
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+  /url:
+    post:
+      operationId: Save
+      security:
+        - basicAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveRequest'
+        required: true
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResponse'
+        '401':
+          description: unauthorized
+  /url/{id}:
+    delete:
+      operationId: Delete
+      security:
+        - basicAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: URL ID
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 10
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        '401':
+          description: unauthorized
+components:
+  schemas:
+    SaveRequest:
+      required:
+        - url
+      type: object
+      properties:
+        url:
+          type: string
+          format: url
+        alias:
+          type: string
+    SaveResponse:
+      required:
+        - status
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["OK", "Error"]
+        error:
+          type: string
+        id:
+          type: integer
+          format: int64
+        alias:
+          type: string
+        url:
+          type: string
+          format: url
+    Response:
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: ["OK", "Error"]
+        error:
+          type: string
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic

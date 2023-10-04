@@ -90,3 +90,29 @@ func (s *Storage) GetURL(alias string) (string, error) {
 
 // TODO: implement method
 // func (s *Storage) DeleteURL(alias string) error
+// Hmm?.. the main.go file said: `TODO: add DELETE /url/{id}'
+
+func (s *Storage) DeleteURL(urlID int64) error {
+	const op = "storage.sqlite.DeleteURL"
+
+	stmt, err := s.db.Prepare("DELETE FROM url WHERE id = ?")
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	res, err := stmt.Exec(urlID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if n == 0 {
+		return fmt.Errorf("%s: %w", op, storage.ErrURLNotFound)
+	}
+
+	return nil
+}

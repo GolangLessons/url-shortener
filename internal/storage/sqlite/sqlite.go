@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/mattn/go-sqlite3"
 
@@ -11,7 +12,9 @@ import (
 )
 
 type Storage struct {
-	db *sql.DB
+	db        *sql.DB
+	stickyErr error
+	once      sync.Once
 }
 
 func New(storagePath string) (*Storage, error) {
@@ -39,6 +42,18 @@ func New(storagePath string) (*Storage, error) {
 	}
 
 	return &Storage{db: db}, nil
+}
+
+func (s *Storage) Close() error {
+	const op = "storage.sqlite.Close"
+
+	s.once.Do(func() {
+		if err := s.db.Close(); err != nil {
+			s.stickyErr = fmt.Errorf("%s: %w", op, err)
+		}
+	})
+
+	return s.stickyErr
 }
 
 func (s *Storage) SaveURL(urlToSave string, alias string) (int64, error) {
